@@ -12,7 +12,7 @@ const ui = { q: '', kind: 'all', tag: null, view: 'today', project: null, tab: '
 
 const dayKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const isWeekend = (d) => d.getDay() === 0 || d.getDay() === 6;
-const hoursOn = (k) => { const h = S.hours[k] || {}; return (h.yt || 0) + (h.sheet || 0) + (h.manual || 0); };
+const hoursOn = (k) => { const h = S.hours[k] || {}; return typeof h.manual === 'number' ? h.manual : (h.yt || 0) + (h.sheet || 0); };
 const fmtH = (h) => String(Math.round(h * 10) / 10).replace('.', ',') + '\u00A0ч';
 const cur = () => ui.cur || S.settings.currency || 'usd';
 function money(usd, c = cur(), digits = 0) {
@@ -104,13 +104,13 @@ function viewToday() {
   const now = new Date(), key = dayKey(now), h = hoursOn(key), norm = S.settings.dayNorm, hr = S.hours[key] || {};
   const ms = monthStats(), pg = piggy();
   const bars = Array.from({ length: norm }, (_, i) => `<span class="${i < Math.floor(h) ? 'on' : ''}"></span>`).join('');
-  const src = [hr.yt ? `YouTrack ${fmtH(hr.yt)}` : '', hr.sheet ? `таблица ${fmtH(hr.sheet)}` : '', hr.manual ? `вручную ${fmtH(hr.manual)}` : ''].filter(Boolean).join(' · ');
+  const src = [hr.yt ? `YouTrack ${fmtH(hr.yt)}` : '', hr.sheet ? `таблица ${fmtH(hr.sheet)}` : '', typeof hr.manual === 'number' ? `итог поправлен вручную: ${fmtH(hr.manual)}` : ''].filter(Boolean).join(' · ');
   const block = (title, rows) => rows.length ? `<div class="group-k">${title}</div>${rows.join('')}` : '';
 
   const urgent = [];
   if (!isWeekend(now) && h < norm) {
     urgent.push(ui.editHours === key
-      ? `<div class="item"><span class="mark" style="border-color:var(--amber)"></span><span class="t">Часы Лайма за сегодня, вручную</span><input class="hours-input" id="hoursIn" type="number" step="0.5" min="0" value="${hr.manual || ''}" placeholder="0"><span class="meta">Enter</span></div>`
+      ? `<div class="item"><span class="mark" style="border-color:var(--amber)"></span><span class="t">Итог часов за сегодня (пусто — считать из YouTrack и таблицы)</span><input class="hours-input" id="hoursIn" type="number" step="0.5" min="0" value="${typeof hr.manual === 'number' ? hr.manual : ''}" placeholder="${(hr.yt || 0) + (hr.sheet || 0)}"><span class="meta">Enter</span></div>`
       : `<div class="item"><span class="mark" style="border-color:var(--amber)"></span><span class="t">${h ? `Внести часы — не хватает ${fmtH(norm - h)}` : 'Внести часы Лайма за сегодня'}</span><span class="meta">сверка в ${S.settings.reminderTime}</span><button class="act amber" data-act="hours" data-k="${key}">Внести</button></div>`);
   }
   (S.calendar.events || []).filter((e) => new Date(e.end) > now).slice(0, 2).forEach((e) => {
@@ -209,7 +209,7 @@ function viewIncome() {
     const editing = ui.editHours === d.key;
     return `<div class="item" style="min-height:44px"><span style="width:6px;height:6px;border-radius:50%;background:${d.h >= norm ? 'var(--cyan)' : 'var(--amber)'}"></span>
       <span class="t" style="font-size:15px">${DOW[dt.getDay()]}, ${d.d} ${MONTHS_GEN[dt.getMonth()]}</span>
-      ${editing ? `<input class="hours-input" id="hoursIn" type="number" step="0.5" min="0" value="${(S.hours[d.key] || {}).manual || ''}">` : `<button class="meta" data-act="hours" data-k="${d.key}" title="Изменить">${fmtH(d.h)}</button>`}
+      ${editing ? `<input class="hours-input" id="hoursIn" type="number" step="0.5" min="0" value="${typeof (S.hours[d.key] || {}).manual === 'number' ? S.hours[d.key].manual : ''}" placeholder="${((S.hours[d.key] || {}).yt || 0) + ((S.hours[d.key] || {}).sheet || 0)}">` : `<button class="meta" data-act="hours" data-k="${d.key}" title="Изменить">${fmtH(d.h)}</button>`}
       <span style="width:80px;text-align:right;font-variant-numeric:tabular-nums">${money(d.h * S.settings.limeRate)}</span></div>`;
   }).join('');
   const months = [];

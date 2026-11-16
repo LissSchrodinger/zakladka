@@ -97,6 +97,7 @@ function processInbox() {
         for (const [k, h] of Object.entries(j.hours || {})) {
           const cur = data.hours[k] || {};
           for (const src of ['yt', 'sheet', 'manual']) if (typeof h[src] === 'number') cur[src] = Math.max(0, h[src]);
+          if ((typeof h.yt === 'number' || typeof h.sheet === 'number') && typeof h.manual !== 'number') delete cur.manual;
           cur.syncedAt = Date.now(); data.hours[k] = cur;
         }
         const byName = (n) => data.projects.find((p) => p.id === n || p.name.toLowerCase() === String(n || '').toLowerCase());
@@ -207,7 +208,8 @@ async function refreshCalendar() {
 // ---------------- reminders ----------------
 const notified = new Set();
 const fmtH = (h) => String(Math.round(h * 10) / 10).replace('.', ',') + '\u00A0ч';
-function hoursOn(key) { const h = data.hours[key] || {}; return (h.yt || 0) + (h.sheet || 0) + (h.manual || 0); }
+// «Вручную» — это поправленный итог дня: если он есть, он главнее собранных часов
+function hoursOn(key) { const h = data.hours[key] || {}; return typeof h.manual === 'number' ? h.manual : (h.yt || 0) + (h.sheet || 0); }
 
 function checkReminder() {
   const now = new Date();
@@ -421,7 +423,7 @@ ipcMain.handle('delete-project', (_e, id) => mutate(() => {
   data.entries = data.entries.filter((e) => e.projectId !== id);
 }));
 ipcMain.handle('set-hours', (_e, { date, manual }) => mutate(() => {
-  const k = date || dayKey(); data.hours[k] = { ...(data.hours[k] || {}), manual: Math.max(0, Number(manual) || 0) };
+  const k = date || dayKey(); const cur = { ...(data.hours[k] || {}) }; if (manual === '' || manual === null || manual === undefined) delete cur.manual; else cur.manual = Math.max(0, Number(manual) || 0); data.hours[k] = cur;
 }));
 ipcMain.handle('update-settings', (_e, patch) => mutate(() => { Object.assign(data.settings, patch); }));
 ipcMain.handle('set-ics', async (_e, url) => {
