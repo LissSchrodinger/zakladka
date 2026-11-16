@@ -102,7 +102,8 @@ function processInbox() {
         const byName = (n) => data.projects.find((p) => p.id === n || p.name.toLowerCase() === String(n || '').toLowerCase());
         for (const e of j.entries || []) {
           const p = byName(e.project) || data.projects[0]; if (!p || !e.text) continue;
-          data.entries.push({ id: uid(), projectId: p.id, type: e.type || 'task', text: String(e.text), done: false, created: Date.now(), from: 'claude' });
+          if (e.ext) { const ex = data.entries.find((x) => x.ext === e.ext); if (ex) { ex.text = String(e.text); if (e.url) ex.url = e.url; continue; } }
+          data.entries.push({ id: uid(), projectId: p.id, type: e.type || 'task', text: String(e.text), url: e.url || undefined, ext: e.ext || undefined, done: false, created: Date.now(), from: 'claude' });
         }
         for (const [n, st] of Object.entries(j.status || {})) { const p = byName(n); if (p) { p.status = String(st); p.statusUpdated = Date.now(); } }
         fs.renameSync(full, path.join(dir, 'processed', `${Date.now()}-${f}`));

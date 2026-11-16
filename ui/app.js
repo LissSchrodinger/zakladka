@@ -161,7 +161,7 @@ function entryRow(e, withProject, showAge) {
   const shape = { task: '50%', question: '6px', idea: '50% 50% 50% 4px', link: '6px', person: '50%' }[e.type] || '50%';
   const checkable = ['task', 'question', 'idea'].includes(e.type);
   const tg = e.type === 'person' || e.type === 'question' ? tgLink(e.text) : null;
-  const url = e.type === 'link' ? urlOf(e.text) : null;
+  const url = e.url || (e.type === 'link' ? urlOf(e.text) : null);
   const label = e.type === 'link' && e.title ? `${esc(e.title)} <span class="meta">${esc(e.text)}</span>` : esc(e.text);
   const mark = checkable
     ? `<button class="mark" data-act="toggle" data-k="${e.id}" aria-label="${e.done ? 'Вернуть' : 'Сделано'}" style="border-radius:${shape};border-color:${p.color};background:${e.done ? p.color : 'transparent'}">${e.done ? '✓' : ''}</button>`
