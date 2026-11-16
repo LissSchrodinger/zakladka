@@ -8,7 +8,7 @@ const TYPES = [['task', 'Задача', 'Что нужно сделать…'], 
 const TABS = [['task', 'Задачи'], ['question', 'Вопросы'], ['idea', 'Идеи'], ['link', 'Ссылки'], ['person', 'Люди']];
 
 let S = null;
-const ui = { view: 'today', project: null, tab: 'task', draft: '', type: 'task', target: null, editHours: null, cur: null, pending: false };
+const ui = { q: '', kind: 'all', tag: null, view: 'today', project: null, tab: 'task', draft: '', type: 'task', target: null, editHours: null, cur: null, pending: false };
 
 const dayKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const isWeekend = (d) => d.getDay() === 0 || d.getDay() === 6;
@@ -73,9 +73,9 @@ function render(force) {
   ui.pending = false;
   document.querySelectorAll('#nav button').forEach((b) => b.classList.toggle('on', b.dataset.v === ui.view));
   const now = new Date();
-  $('#clock').textContent = `${now.getDate()} ${MONTHS_GEN[now.getMonth()]} · ${now.toTimeString().slice(0, 5)} · ⌘⇧Space`;
+  $('#clock').textContent = `${now.getDate()} ${MONTHS_GEN[now.getMonth()]} · ${now.toTimeString().slice(0, 5)}`;
   const upd = $('#upd'); upd.hidden = !S.update; if (S.update) upd.textContent = `Обновить до ${S.update}`;
-  const v = { today: viewToday, projects: viewProjects, income: viewIncome, settings: viewSettings }[ui.view]();
+  const v = { today: viewToday, projects: viewProjects, income: viewIncome, base: viewBase, settings: viewSettings }[ui.view]();
   $('#view').innerHTML = v;
 }
 document.addEventListener('focusout', () => setTimeout(() => { if (ui.pending) render(); }, 0));
@@ -110,7 +110,7 @@ function viewToday() {
   [...qs, ...ts].forEach((e) => rows.push(entryRow(e, true)));
   const shown = qs.length + ts.length, rest = open.length - shown;
   const calHint = !S.settings.hasCalendar ? `<div class="more"><a href="#" data-act="go" data-k="settings">Подключить календарь →</a></div>` : '';
-  return `<div class="col">
+  return `<div class="col center">
     <section class="hero">
       <span class="label">Сегодня заработано</span>
       <span class="big">${money(h * S.settings.limeRate)}</span>
@@ -198,6 +198,30 @@ function viewIncome() {
   </div>`;
 }
 
+const KINDS = [['all', 'Всё'], ['link', 'Ссылки'], ['person', 'Люди'], ['task', 'Задачи'], ['question', 'Вопросы'], ['idea', 'Идеи']];
+function viewBase() {
+  const q = ui.q.trim().toLowerCase();
+  const words = q.split(/\s+/).filter(Boolean);
+  const hit = (str) => words.every((w) => str.toLowerCase().includes(w));
+  let items = S.entries.filter((e) => (ui.kind === 'all' || e.type === ui.kind) && (!ui.tag || e.projectId === ui.tag));
+  if (words.length) items = items.filter((e) => hit(`${e.text} ${e.title || ''} ${(proj(e.projectId) || {}).name || ''}`));
+  else if (ui.kind === 'all') items = items.filter((e) => e.type === 'link' || e.type === 'person' || !e.done);
+  const order = { link: 0, person: 1, question: 2, task: 3, idea: 4 };
+  items.sort((a, b) => (a.done - b.done) || (order[a.type] - order[b.type]) || (b.created - a.created));
+  const statuses = words.length ? S.projects.filter((p) => p.status && hit(p.status + ' ' + p.name)) : [];
+  const kinds = KINDS.map(([k, l]) => `<button class="chip ${ui.kind === k ? 'on' : ''}" data-act="kind" data-k="${k}">${l}</button>`).join('');
+  const tags = S.projects.map((p) => `<button class="chip ${ui.tag === p.id ? 'on' : ''}" data-act="tag" data-k="${p.id}"><span class="d" style="background:${p.color}"></span>${esc(p.name)}</button>`).join('');
+  const addTo = proj(ui.tag) || proj(S.lastProjectId) || S.projects[0];
+  return `<div class="col" style="max-width:760px">
+    <section class="search glass"><span style="color:var(--faint)">⌕</span><input id="q" placeholder="Найти ссылку, человека, задачу…" value="${esc(ui.q)}" autocomplete="off"><kbd>⌘K</kbd></section>
+    <div class="filters">${kinds}<span class="sep"></span>${tags}</div>
+    <section class="list">
+      ${statuses.map((p) => `<div class="item"><span class="mark" style="border-color:${p.color};border-radius:6px;color:${p.color}">⌖</span><span class="t">${esc(p.status)}</span><span class="meta">где остановилась · ${esc(p.name)}</span><button class="act cyan" data-act="openproject" data-k="${p.id}">Открыть</button></div>`).join('')}
+      ${items.map((e) => entryRow(e, true)).join('') || `<div class="empty">${words.length ? 'Ничего не нашлось.' : 'Здесь появятся ссылки, люди и всё, что ты запишешь.'}</div>`}
+      <label class="addline"><span style="color:${addTo ? addTo.color : 'var(--cyan)'};font-size:18px">＋</span><input id="baseAdd" placeholder="Ссылка или «Имя, роль @telegram» → в «${esc(addTo ? addTo.name : '')}»"></label>
+    </section></div>`;
+}
+
 function viewSettings() {
   const s = S.settings;
   return `<div class="col">
@@ -228,7 +252,7 @@ async function saveDraft() {
 }
 
 document.addEventListener('click', async (ev) => {
-  const navB = ev.target.closest('#nav button'); if (navB) { ui.view = navB.dataset.v; ui.editHours = null; render(); return; }
+  const navB = ev.target.closest('#nav button'); if (navB) { ui.view = navB.dataset.v; ui.editHours = null; render(); if (ui.view === 'base') { const q = $('#q'); q && q.focus(); } return; }
   if (ev.target.closest('#gear')) { ui.view = 'settings'; render(); return; }
   if (ev.target.closest('#upd')) { window.db.installUpdate(); return; }
   const el = ev.target.closest('[data-act]'); if (!el) return;
@@ -246,6 +270,9 @@ document.addEventListener('click', async (ev) => {
     case 'open': window.db.openUrl(k); break;
     case 'hours': ui.editHours = k; render(); setTimeout(() => { const i = $('#hoursIn'); if (i) { i.focus(); i.select(); } }, 0); break;
     case 'cur': ui.cur = k; render(); break;
+    case 'kind': ui.kind = k; render(); break;
+    case 'tag': ui.tag = ui.tag === k ? null : k; render(); break;
+    case 'openproject': ui.project = k; ui.view = 'projects'; render(); break;
     case 'export': await window.db.exportProject(ui.project); toast('Скопировано — вставь в чат с Claude'); break;
     case 'updates': window.db.checkUpdates(); break;
   }
@@ -257,6 +284,7 @@ document.addEventListener('input', (ev) => {
     if (was !== ui.draft.length > 0) { const pos = ev.target.selectionStart; render(true); const d = $('#draft'); d.focus(); d.setSelectionRange(pos, pos); }
     else { const b = document.querySelector('.send'); b && b.classList.toggle('ready', ui.draft.length > 0); }
   }
+  if (ev.target.id === 'q') { ui.q = ev.target.value; const pos = ev.target.selectionStart; render(true); const q = $('#q'); q.focus(); q.setSelectionRange(pos, pos); }
   if (ev.target.id === 'status') {
     clearTimeout(ev.target._t); const id = ui.project, val = ev.target.value;
     ev.target._t = setTimeout(() => window.db.updateProject(id, { status: val }), 600);
@@ -273,6 +301,13 @@ document.addEventListener('keydown', async (ev) => {
   if (t.id === 'addItem' && ev.key === 'Enter' && !ev.isComposing && t.value.trim()) {
     await window.db.addEntry({ projectId: ui.project, type: ui.tab, text: t.value }); t.value = ''; t.blur(); setTimeout(() => { const a = $('#addItem'); a && a.focus(); }, 50);
   }
+  if (t.id === 'baseAdd' && ev.key === 'Enter' && !ev.isComposing && t.value.trim()) {
+    const v = t.value.trim(), type = /^https?:\/\//.test(v) ? 'link' : 'person';
+    const target = ui.tag || S.lastProjectId || (S.projects[0] || {}).id;
+    await window.db.addEntry({ projectId: target, type, text: v }); t.value = ''; toast(type === 'link' ? 'Ссылка добавлена' : 'Человек добавлен');
+  }
+  if (ev.metaKey && (ev.key === 'k' || ev.key === 'л')) { ev.preventDefault(); ui.view = 'base'; render(true); const q = $('#q'); q && q.focus(); }
+  if (t.id === 'q' && ev.key === 'Escape') { ui.q = ''; render(true); }
   if (t.id === 'newProject' && ev.key === 'Enter' && t.value.trim()) { const id = await window.db.addProject(t.value.trim()); ui.project = id; t.value = ''; t.blur(); }
   if (t.id === 'hoursIn' && (ev.key === 'Enter' || ev.key === 'Escape')) {
     const k = ui.editHours; ui.editHours = null;
@@ -281,7 +316,7 @@ document.addEventListener('keydown', async (ev) => {
   }
   if (t.id === 'ics' && ev.key === 'Enter') { await window.db.setIcs(t.value); t.value = ''; t.blur(); toast('Календарь подключён'); }
   if (t.id === 'pname' && ev.key === 'Enter') { ev.preventDefault(); t.blur(); }
-  if (!/INPUT|TEXTAREA/.test(t.tagName) && !t.isContentEditable && ev.metaKey && /^[1-3]$/.test(ev.key)) { ui.view = ['today', 'projects', 'income'][+ev.key - 1]; render(); }
+  if (!/INPUT|TEXTAREA/.test(t.tagName) && !t.isContentEditable && ev.metaKey && /^[1-4]$/.test(ev.key)) { ui.view = ['today', 'projects', 'income', 'base'][+ev.key - 1]; render(); }
 });
 
 document.addEventListener('change', (ev) => {
