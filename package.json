@@ -1,0 +1,14 @@
+{
+  "name": "zakladka",
+  "version": "1.1.0",
+  "description": "Закладка — быстрые записи по проектам",
+  "main": "main.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@electron/packager": "^20.3.0",
+    "electron": "^33.4.11"
+  },
+  "productName": "Zakladka"
+}

@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="base.css">
+<style>
+  html, body { background: transparent; overflow: hidden; }
+  .box {
+    margin: 0; background: var(--bg); border-radius: 14px;
+    border: 1px solid var(--line); padding: 14px 16px 12px;
+    -webkit-app-region: drag;
+  }
+  .row { display: flex; align-items: center; gap: 6px; -webkit-app-region: no-drag; }
+  textarea {
+    width: 100%; border: 0; outline: 0; background: transparent; resize: none;
+    font-size: 20px; line-height: 1.35; padding: 2px 0 10px; min-height: 38px; max-height: 180px;
+    -webkit-app-region: no-drag; user-select: text;
+  }
+  textarea::placeholder { color: var(--faint); }
+  .chips { display: flex; gap: 4px; flex-wrap: wrap; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 9px; border-radius: 7px; color: var(--muted); font-size: 12px;
+  }
+  .chip:hover { background: var(--hover); }
+  .chip.on { background: var(--active); color: var(--text); font-weight: 500; }
+  #types .chip.on { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+  .sep { width: 1px; height: 16px; background: var(--line); margin: 0 6px; }
+  .hint { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line); color: var(--faint); font-size: 11px; display: flex; gap: 14px; }
+  .hint b { font-weight: 500; color: var(--muted); }
+  .saved { position: absolute; right: 18px; top: 18px; color: #22B07D; font-size: 12px; opacity: 0; transition: opacity .15s; }
+</style>
+</head>
+<body>
+<div class="box" id="box">
+  <textarea id="input" rows="1" autofocus></textarea>
+  <div class="row"><div class="chips" id="projects"></div></div>
+  <div class="row" style="margin-top:4px"><div class="chips" id="types"></div></div>
+  <div class="hint">
+    <span><b>Tab</b> проект</span>
+    <span><b>⌘1–4</b> тип</span>
+    <span><b>Enter</b> сохранить</span>
+    <span><b>⇧Enter</b> новая строка</span>
+    <span><b>Esc</b> закрыть</span>
+  </div>
+</div>
+<script>
+const TYPES = [
+  { id: 'task', label: 'Задача', ph: 'Что нужно сделать…' },
+  { id: 'idea', label: 'Идея', ph: 'Что пришло в голову…' },
+  { id: 'question', label: 'Вопрос', ph: 'Что спросить или выяснить…' },
+  { id: 'status', label: 'Где остановилась', ph: 'На чём остановилась и что дальше…' },
+];
+let data, projectId, type;
+const $ = (id) => document.getElementById(id);
+const input = $('input');
+
+function render() {
+  $('projects').innerHTML = data.projects.map(p =>
+    `<button class="chip ${p.id === projectId ? 'on' : ''}" data-p="${p.id}"><span class="dot" style="background:${p.color}"></span>${esc(p.name)}</button>`).join('');
+  $('types').innerHTML = TYPES.map((t, i) =>
+    `<button class="chip ${t.id === type ? 'on' : ''}" data-t="${t.id}" title="⌘${i + 1}">${t.label}</button>`).join('');
+  input.placeholder = TYPES.find(t => t.id === type).ph;
+  fit();
+}
+const esc = (s) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function fit() {
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 180) + 'px';
+  requestAnimationFrame(() => window.zk.resizeCapture($('box').offsetHeight + 2));
+}
+
+function setType(t) {
+  type = t;
+  if (t === 'status' && !input.value.trim()) {
+    const p = data.projects.find(p => p.id === projectId);
+    if (p && p.status) { input.value = p.status; input.select(); }
+  }
+  render();
+}
+
+function open(d) {
+  data = d;
+  projectId = data.projects.some(p => p.id === data.lastProjectId) ? data.lastProjectId : (data.projects[0] || {}).id;
+  type = data.lastType === 'status' ? 'task' : (data.lastType || 'task');
+  input.value = '';
+  render();
+  input.focus();
+}
+
+$('projects').onclick = (e) => { const b = e.target.closest('[data-p]'); if (b) { projectId = b.dataset.p; render(); input.focus(); } };
+$('types').onclick = (e) => { const b = e.target.closest('[data-t]'); if (b) { setType(b.dataset.t); input.focus(); } };
+input.addEventListener('input', fit);
+
+document.addEventListener('keydown', async (e) => {
+  if (e.key === 'Escape') { window.zk.closeCapture(); return; }
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const i = data.projects.findIndex(p => p.id === projectId);
+    const n = data.projects.length;
+    projectId = data.projects[(i + (e.shiftKey ? -1 : 1) + n) % n].id;
+    render(); return;
+  }
+  if (e.metaKey && /^[1-4]$/.test(e.key)) { e.preventDefault(); setType(TYPES[+e.key - 1].id); return; }
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    if (!input.value.trim()) return;
+    await window.zk.addEntry({ projectId, type, text: input.value });
+    window.zk.closeCapture();
+  }
+});
+
+window.zk.onCaptureOpen(open);
+window.zk.getData().then(open);
+</script>
+</body>
+</html>

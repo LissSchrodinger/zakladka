@@ -1,0 +1,51 @@
+name: Build & release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version
+        id: v
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          if gh release view "v$VERSION" >/dev/null 2>&1; then echo "exists=true" >> $GITHUB_OUTPUT; else echo "exists=false" >> $GITHUB_OUTPUT; fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - uses: actions/setup-node@v4
+        if: steps.v.outputs.exists == 'false'
+        with:
+          node-version: 22
+
+      - name: Build app
+        if: steps.v.outputs.exists == 'false'
+        run: |
+          npm ci
+          npx @electron/packager . Zakladka --platform=darwin --arch=arm64 \
+            --icon=build/icon.icns --app-bundle-id=com.vasilisa.zakladka \
+            --app-category-type=public.app-category.productivity \
+            --ignore='^/build' --ignore='^/test' --ignore='^/out' --ignore='^/\.github' \
+            --out=out --overwrite
+          codesign --force --deep --sign - out/Zakladka-darwin-arm64/Zakladka.app
+          codesign --verify --deep out/Zakladka-darwin-arm64/Zakladka.app
+          ditto -c -k --keepParent out/Zakladka-darwin-arm64/Zakladka.app Zakladka-arm64.zip
+
+      - name: Publish release
+        if: steps.v.outputs.exists == 'false'
+        run: |
+          NOTES=$(git log -1 --pretty=%B)
+          gh release create "v${{ steps.v.outputs.version }}" Zakladka-arm64.zip \
+            --title "Закладка ${{ steps.v.outputs.version }}" --notes "$NOTES"
+        env:
+          GH_TOKEN: ${{ github.token }}
