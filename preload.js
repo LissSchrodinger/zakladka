@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('db', {
   addEntry: call('add-entry'),
   updateEntry: (id, patch) => ipcRenderer.invoke('update-entry', { id, patch }),
   deleteEntry: call('delete-entry'),
+  restoreEntry: call('restore-entry'),
   updateProject: (id, patch) => ipcRenderer.invoke('update-project', { id, patch }),
   addProject: call('add-project'),
   deleteProject: call('delete-project'),
@@ -22,4 +23,6 @@ contextBridge.exposeInMainWorld('db', {
   onState: (cb) => ipcRenderer.on('state', (_e, s) => cb(s)),
   onCaptureOpen: (cb) => ipcRenderer.on('capture-open', (_e, s) => cb(s)),
   onGo: (cb) => ipcRenderer.on('go', (_e, v) => cb(v)),
+  onSearch: (cb) => ipcRenderer.on('search', (_e, q) => cb(q)),
+  openSearch: (q) => ipcRenderer.send('open-search', q),
 });

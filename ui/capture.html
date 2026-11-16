@@ -17,6 +17,11 @@
   .chip.on { background: rgba(255,255,255,.14); color: #fff; }
   .d { width: 6px; height: 6px; border-radius: 50%; }
   .sep { width: 1px; height: 18px; align-self: center; background: rgba(255,255,255,.12); margin: 0 4px; }
+  .res { display: flex; flex-direction: column; gap: 2px; padding-top: 8px; -webkit-app-region: no-drag; }
+  .res div { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 10px; font-size: 14px; color: rgba(225,232,255,.8); }
+  .res div.sel { background: rgba(127,227,232,.14); color: #fff; }
+  .res .k { font-size: 11px; color: rgba(225,232,255,.4); width: 56px; }
+  .res .m { margin-left: auto; font-size: 12px; color: rgba(225,232,255,.4); }
   .hint { display: flex; gap: 14px; padding-top: 8px; font-size: 11px; color: rgba(225,232,255,.35); }
   .hint b { font-weight: 500; color: rgba(225,232,255,.6); }
 </style>
@@ -24,12 +29,14 @@
 <body>
 <div class="box" id="box">
   <div class="row"><textarea id="input" rows="1" autofocus></textarea></div>
+  <div class="res" id="res"></div>
   <div class="chips" id="chips"></div>
-  <div class="hint"><span><b>Tab</b> проект</span><span><b>⌘1–6</b> тип</span><span><b>Enter</b> сохранить</span><span><b>⇧Enter</b> строка</span><span><b>Esc</b> закрыть</span></div>
+  <div class="hint"><span><b>Tab</b> проект</span><span><b>⌘1–6</b> тип</span><span><b>↓</b> найденное</span><span><b>Enter</b> сохранить</span><span><b>⇧Enter</b> строка</span><span><b>Esc</b> закрыть</span></div>
 </div>
 <script>
 const TYPES = [['task', 'Задача', 'Что нужно сделать…'], ['question', 'Вопрос', 'Что спросить или выяснить…'], ['idea', 'Идея', 'Что пришло в голову…'], ['status', 'Где остановилась', 'На чём остановилась и что дальше…'], ['link', 'Ссылка', 'Вставь ссылку'], ['person', 'Человек', 'Имя, роль и @telegram']];
-let S, pid, type;
+let S, pid, type, sel = -1, matches = [];
+const KL = { link: 'ссылка', person: 'человек', task: 'задача', question: 'вопрос', idea: 'идея' };
 const input = document.getElementById('input');
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 function render() {
@@ -48,18 +55,36 @@ function setType(t) {
 function open(s) {
   S = s; pid = S.projects.some((p) => p.id === S.lastProjectId) ? S.lastProjectId : (S.projects[0] || {}).id;
   type = ['status', 'link', 'person'].includes(S.lastType) ? 'task' : (S.lastType || 'task');
-  input.value = ''; render(); input.focus();
+  input.value = ''; sel = -1; matches = []; document.getElementById('res').innerHTML = ''; render(); input.focus();
 }
 document.getElementById('chips').onclick = (e) => {
   const b = e.target.closest('button'); if (!b) return;
   if (b.dataset.t) setType(b.dataset.t); if (b.dataset.p) { pid = b.dataset.p; render(); }
   input.focus();
 };
-input.addEventListener('input', fit);
+function search() {
+  const q = input.value.trim().toLowerCase(); const w = q.split(/\s+/).filter(Boolean);
+  matches = q.length < 2 || type === 'status' ? [] : S.entries.filter((e) => !e.done || e.type === 'link' || e.type === 'person')
+    .filter((e) => w.every((x) => `${e.text} ${e.title || ''}`.toLowerCase().includes(x))).slice(0, 5);
+  if (sel >= matches.length) sel = matches.length - 1;
+  document.getElementById('res').innerHTML = matches.map((e, i) => { const p = S.projects.find((x) => x.id === e.projectId) || {};
+    return `<div class="${i === sel ? 'sel' : ''}"><span class="k">${KL[e.type] || ''}</span>${esc(e.title || e.text).slice(0, 90)}<span class="m">${esc(p.name || '')}</span></div>`; }).join('');
+  fit();
+}
+function openMatch(e) {
+  const url = (e.text.match(/https?:\/\/\S+/) || [])[0]; const tg = (e.text.match(/@([A-Za-z0-9_]{4,})/) || [])[1];
+  if (e.type === 'link' && url) { window.db.openUrl(url); window.db.closeCapture(); }
+  else if (tg && (e.type === 'person' || e.type === 'question')) { window.db.openUrl('tg://resolve?domain=' + tg); window.db.closeCapture(); }
+  else window.db.openSearch(input.value.trim());
+}
+input.addEventListener('input', () => { sel = -1; search(); });
 document.addEventListener('keydown', async (e) => {
   if (e.key === 'Escape') return window.db.closeCapture();
   if (e.key === 'Tab') { e.preventDefault(); const i = S.projects.findIndex((p) => p.id === pid), n = S.projects.length; pid = S.projects[(i + (e.shiftKey ? -1 : 1) + n) % n].id; render(); return; }
   if (e.metaKey && /^[1-6]$/.test(e.key)) { e.preventDefault(); setType(TYPES[+e.key - 1][0]); return; }
+  if (e.key === 'ArrowDown' && matches.length) { e.preventDefault(); sel = Math.min(sel + 1, matches.length - 1); search(); return; }
+  if (e.key === 'ArrowUp' && matches.length) { e.preventDefault(); sel = Math.max(sel - 1, -1); search(); return; }
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && sel >= 0 && matches[sel]) { e.preventDefault(); openMatch(matches[sel]); return; }
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
     e.preventDefault(); if (!input.value.trim()) return;
     await window.db.addEntry({ projectId: pid, type, text: input.value }); window.db.closeCapture();

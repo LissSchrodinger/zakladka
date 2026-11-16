@@ -13,7 +13,7 @@ const ui = { q: '', kind: 'all', tag: null, view: 'today', project: null, tab: '
 const dayKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const isWeekend = (d) => d.getDay() === 0 || d.getDay() === 6;
 const hoursOn = (k) => { const h = S.hours[k] || {}; return (h.yt || 0) + (h.sheet || 0) + (h.manual || 0); };
-const fmtH = (h) => String(Math.round(h * 10) / 10).replace('.', ',') + ' ч';
+const fmtH = (h) => String(Math.round(h * 10) / 10).replace('.', ',') + '\u00A0ч';
 const cur = () => ui.cur || S.settings.currency || 'usd';
 function money(usd, c = cur(), digits = 0) {
   const r = c === 'usd' ? 1 : S.settings.rates[c];
@@ -30,7 +30,14 @@ function ago(ts) {
 }
 function workdaysIn(y, m) { let n = 0; for (let d = 1; d <= new Date(y, m + 1, 0).getDate(); d++) if (!isWeekend(new Date(y, m, d))) n++; return n; }
 function proj(id) { return S.projects.find((p) => p.id === id); }
-function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('show'); clearTimeout(el._h); el._h = setTimeout(() => el.classList.remove('show'), 1800); }
+let undoFn = null;
+function toast(t, undo) {
+  const el = $('#toast'); undoFn = undo || null;
+  el.innerHTML = esc(t) + (undo ? ' <button data-act="undo" style="margin-left:10px;color:var(--cyan);font-weight:500">Вернуть</button>' : '');
+  el.style.pointerEvents = undo ? 'auto' : 'none';
+  el.classList.add('show'); clearTimeout(el._h); el._h = setTimeout(() => { el.classList.remove('show'); undoFn = null; }, undo ? 5000 : 1800);
+}
+
 function tgLink(text) { const m = String(text).match(/@([A-Za-z0-9_]{4,})/); return m ? 'tg://resolve?domain=' + m[1] : null; }
 function urlOf(text) { const m = String(text).match(/https?:\/\/\S+/); return m ? m[0] : null; }
 
@@ -88,43 +95,62 @@ function composerHtml(id) {
 }
 
 function viewToday() {
-  const now = new Date(), key = dayKey(now), h = hoursOn(key), norm = S.settings.dayNorm;
+  const now = new Date(), key = dayKey(now), h = hoursOn(key), norm = S.settings.dayNorm, hr = S.hours[key] || {};
   const ms = monthStats(), pg = piggy();
   const bars = Array.from({ length: norm }, (_, i) => `<span class="${i < Math.floor(h) ? 'on' : ''}"></span>`).join('');
-  const rows = [];
+  const src = [hr.yt ? `YouTrack ${fmtH(hr.yt)}` : '', hr.sheet ? `таблица ${fmtH(hr.sheet)}` : '', hr.manual ? `вручную ${fmtH(hr.manual)}` : ''].filter(Boolean).join(' · ');
+  const block = (title, rows) => rows.length ? `<div class="group-k">${title}</div>${rows.join('')}` : '';
+
+  const urgent = [];
   if (!isWeekend(now) && h < norm) {
-    rows.push(ui.editHours === key
-      ? `<div class="item"><span class="mark" style="border-color:var(--amber)"></span><span class="t">Часы Лайма за сегодня</span><input class="hours-input" id="hoursIn" type="number" step="0.5" min="0" value="${(S.hours[key] || {}).manual || ''}" placeholder="0"><span class="meta">Enter</span></div>`
-      : `<div class="item"><span class="mark" style="border-color:var(--amber)"></span><span class="t">${h ? `Внести часы — не хватает ${fmtH(norm - h)}` : 'Внести часы Лайма за сегодня'}</span><span class="meta">до ${S.settings.reminderTime}</span><button class="act amber" data-act="hours" data-k="${key}">Внести</button></div>`);
+    urgent.push(ui.editHours === key
+      ? `<div class="item"><span class="mark" style="border-color:var(--amber)"></span><span class="t">Часы Лайма за сегодня, вручную</span><input class="hours-input" id="hoursIn" type="number" step="0.5" min="0" value="${hr.manual || ''}" placeholder="0"><span class="meta">Enter</span></div>`
+      : `<div class="item"><span class="mark" style="border-color:var(--amber)"></span><span class="t">${h ? `Внести часы — не хватает ${fmtH(norm - h)}` : 'Внести часы Лайма за сегодня'}</span><span class="meta">сверка в ${S.settings.reminderTime}</span><button class="act amber" data-act="hours" data-k="${key}">Внести</button></div>`);
   }
-  const ev = (S.calendar.events || []).filter((e) => new Date(e.end) > now).slice(0, 2);
-  ev.forEach((e) => {
-    const s = new Date(e.start), tomorrow = s.getDate() !== now.getDate();
-    const when = (tomorrow ? 'завтра ' : '') + (e.allDay ? 'весь день' : s.toTimeString().slice(0, 5));
-    const soon = !tomorrow && s - now < 30 * 60000 && s > now;
-    rows.push(`<div class="item"><span class="mark" style="border-color:rgba(225,232,255,.35)"></span><span class="t">${esc(e.title)}</span><span class="meta" style="${soon ? 'color:var(--amber)' : ''}">${when}</span>${e.url ? `<button class="act cyan" data-act="open" data-k="${esc(e.url)}">Войти</button>` : ''}</div>`);
+  (S.calendar.events || []).filter((e) => new Date(e.end) > now).slice(0, 2).forEach((e) => {
+    const st = new Date(e.start), tomorrow = st.getDate() !== now.getDate();
+    const when = (tomorrow ? 'завтра ' : '') + (e.allDay ? 'весь день' : st.toTimeString().slice(0, 5));
+    const soon = !tomorrow && st - now < 30 * 60000 && st > now;
+    urgent.push(`<div class="item"><span class="mark" style="border-color:rgba(225,232,255,.35)"></span><span class="t">${esc(e.title)}</span><span class="meta" style="${soon ? 'color:var(--amber)' : ''}">${when}</span>${e.url ? `<button class="act cyan" data-act="open" data-k="${esc(e.url)}">Войти</button>` : ''}</div>`);
   });
-  const open = S.entries.filter((e) => !e.done && (e.type === 'task' || e.type === 'question'));
-  const qs = open.filter((e) => e.type === 'question').sort((a, b) => a.created - b.created).slice(0, 3);
-  const ts = open.filter((e) => e.type === 'task').sort((a, b) => b.created - a.created).slice(0, 5);
-  [...qs, ...ts].forEach((e) => rows.push(entryRow(e, true)));
-  const shown = qs.length + ts.length, rest = open.length - shown;
+
+  const qs = S.entries.filter((e) => e.type === 'question' && !e.done).sort((a, b) => a.created - b.created);
+  const tasks = S.entries.filter((e) => e.type === 'task');
+  const starred = tasks.filter((e) => e.today === key && !e.done);
+  const doneToday = S.entries.filter((e) => e.done && e.doneAt && dayKey(new Date(e.doneAt)) === key);
+  const openTasks = tasks.filter((e) => !e.done);
+  let todayRows = starred.slice(0, 5).map((e) => entryRow(e, true));
+  let todayTitle = 'На сегодня';
+  if (!starred.length && openTasks.length) {
+    todayTitle = 'На сегодня — отметь ☆ задачи, а пока свежие';
+    todayRows = openTasks.sort((a, b) => b.created - a.created).slice(0, 3).map((e) => entryRow(e, true));
+  }
+  const restTasks = openTasks.length - Math.min(todayRows.length, openTasks.length);
   const calHint = !S.settings.hasCalendar ? `<div class="more"><a href="#" data-act="go" data-k="settings">Подключить календарь →</a></div>` : '';
+
   return `<div class="col center">
     <section class="hero">
       <span class="label">Сегодня заработано</span>
       <span class="big">${money(h * S.settings.limeRate)}</span>
       <div style="display:flex;align-items:center;gap:12px;font-size:14px;color:var(--dim)"><span class="hours-bar">${bars}</span>${fmtH(h)} из ${norm} на Лайме</div>
+      ${src ? `<span class="hint-link" style="cursor:default">${src}${hr.syncedAt ? ' · собрано ' + new Date(hr.syncedAt).toTimeString().slice(0, 5) : ''}</span>` : ''}
       <a href="#" class="hint-link" data-act="go" data-k="income">${MONTHS[now.getMonth()]} ${money(ms.earned)} · копилка ${rub(pg.total)} →</a>
     </section>
     ${composerHtml('draft')}
-    <section class="list">${rows.join('') || '<div class="empty">Всё сделано. Можно выдохнуть.</div>'}
-      ${rest > 0 ? `<div class="more"><a href="#" data-act="go" data-k="projects">Ещё ${rest} в проектах →</a></div>` : ''}${calHint}</section>
+    <section class="list">
+      ${block('Сейчас', urgent)}
+      ${block(`Ждут ответа · ${qs.length}`, qs.slice(0, 3).map((e) => entryRow(e, true, true)))}
+      ${block(todayTitle, todayRows)}
+      ${restTasks > 0 ? `<div class="more"><a href="#" data-act="go" data-k="projects">Все задачи · ещё ${restTasks} →</a></div>` : ''}
+      ${block(`Сделано сегодня · ${doneToday.length}`, doneToday.slice(0, 5).map((e) => entryRow(e, true)))}
+      ${!urgent.length && !qs.length && !openTasks.length ? '<div class="empty">Всё сделано. Можно выдохнуть.</div>' : ''}
+      ${calHint}
+    </section>
     <section class="fact"><span class="k">факт дня</span><p>${esc(S.fact[0])}</p><small>${esc(S.fact[1])}</small></section>
   </div>`;
 }
 
-function entryRow(e, withProject) {
+function entryRow(e, withProject, showAge) {
   const p = proj(e.projectId) || { color: '#9AA4BF', name: '' };
   const shape = { task: '50%', question: '6px', idea: '50% 50% 50% 4px', link: '6px', person: '50%' }[e.type] || '50%';
   const checkable = ['task', 'question', 'idea'].includes(e.type);
@@ -132,10 +158,12 @@ function entryRow(e, withProject) {
   const url = e.type === 'link' ? urlOf(e.text) : null;
   const label = e.type === 'link' && e.title ? `${esc(e.title)} <span class="meta">${esc(e.text)}</span>` : esc(e.text);
   const mark = checkable
-    ? `<button class="mark" data-act="toggle" data-k="${e.id}" style="border-radius:${shape};border-color:${p.color};background:${e.done ? p.color : 'transparent'}">${e.done ? '✓' : ''}</button>`
+    ? `<button class="mark" data-act="toggle" data-k="${e.id}" aria-label="${e.done ? 'Вернуть' : 'Сделано'}" style="border-radius:${shape};border-color:${p.color};background:${e.done ? p.color : 'transparent'}">${e.done ? '✓' : ''}</button>`
     : `<span class="mark" style="border-radius:${shape};border-color:${p.color};color:${p.color}">${e.type === 'link' ? '↗' : esc(e.text[0] || '')}</span>`;
+  const star = e.type === 'task' && !e.done ? `<button class="star ${e.today === dayKey() ? 'on' : ''}" data-act="star" data-k="${e.id}" title="${e.today === dayKey() ? 'Убрать из «На сегодня»' : 'На сегодня'}">${e.today === dayKey() ? '★' : '☆'}</button>` : '';
   const action = url ? `<button class="act cyan" data-act="open" data-k="${esc(url)}">Открыть</button>` : tg ? `<button class="act" data-act="open" data-k="${tg}">Telegram ↗</button>` : '';
-  return `<div class="item">${mark}<span class="t ${e.done ? 'done' : ''}">${label}</span>${withProject ? `<span class="meta">${esc(p.name)}</span>` : `<span class="meta">${ago(e.created)}</span>`}${action}<button class="x" data-act="del" data-k="${e.id}" aria-label="Удалить">×</button></div>`;
+  const meta = showAge ? `${esc(p.name)} · ${ago(e.created).replace(' назад', '')}` : withProject ? esc(p.name) : ago(e.created);
+  return `<div class="item">${mark}<span class="t ${e.done ? 'done' : ''}" data-edit="${e.id}" title="Дважды кликни, чтобы исправить">${label}</span><span class="meta">${meta}</span>${star}${action}<button class="x" data-act="del" data-k="${e.id}" aria-label="Удалить">×</button></div>`;
 }
 
 function viewProjects() {
@@ -155,7 +183,7 @@ function viewProjects() {
     <main class="pmain">
       <div class="phead"><span style="width:12px;height:12px;border-radius:50%;background:${p.color}"></span>
         <h1 id="pname" title="Дважды кликни, чтобы переименовать">${esc(p.name)}</h1>
-        <button class="btn glass" data-act="export">Выгрузить для Claude</button></div>
+        <button class="btn" data-act="rename" title="Переименовать">✎</button><button class="btn" data-act="delproject" title="Удалить проект">🗑</button><button class="btn glass" data-act="export">Выгрузить для Claude</button></div>
       <section class="status glass"><span class="k">Где я остановилась · ${ago(p.statusUpdated)}</span>
         <textarea id="status" rows="2" placeholder="Что сделано, на чём застряла, какой следующий шаг…">${esc(p.status)}</textarea></section>
       <div class="tabs">${tabs}</div>
@@ -229,7 +257,7 @@ function viewSettings() {
     <section class="form">
       <div class="row"><div class="field"><label>Ставка Лайма, $ в час</label><input data-set="limeRate" type="number" value="${s.limeRate}"></div>
         <div class="field"><label>Норма, часов в день</label><input data-set="dayNorm" type="number" step="0.5" value="${s.dayNorm}"></div></div>
-      <div class="row"><div class="field"><label>Проект Лайма</label><select data-set="limeProject">${S.projects.map((p) => `<option value="${p.id}" ${p.id === s.limeProject ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>
+      <div class="row"><div class="field"><label>Чьи часы считаем — проект Лайма</label><select data-set="limeProject" title="Часы и деньги на главной относятся к этому проекту">${S.projects.map((p) => `<option value="${p.id}" ${p.id === s.limeProject ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>
         <div class="field"><label>Напоминание о часах</label><input data-set="reminderTime" type="time" value="${s.reminderTime}"></div></div>
       <div class="row"><div class="field"><label>Копилка УрФУ, ₽ в месяц</label><input data-set="urfuMonthRub" type="number" value="${s.urfuMonthRub}"></div>
         <div class="field"><label>Валюта по умолчанию</label><select data-set="currency">${['usd', 'rub', 'gel'].map((c) => `<option value="${c}" ${s.currency === c ? 'selected' : ''}>${SYM[c]}</option>`).join('')}</select></div></div>
@@ -265,8 +293,12 @@ document.addEventListener('click', async (ev) => {
     case 'go': ui.view = k; render(); break;
     case 'project': ui.project = k; render(); break;
     case 'tab': ui.tab = k; render(); break;
-    case 'toggle': { const e = S.entries.find((x) => x.id === k); if (e) window.db.updateEntry(k, { done: !e.done }); break; }
-    case 'del': window.db.deleteEntry(k); break;
+    case 'toggle': { const e = S.entries.find((x) => x.id === k); if (!e) break; await window.db.updateEntry(k, { done: !e.done }); if (!e.done) toast('Сделано', () => window.db.updateEntry(k, { done: false })); break; }
+    case 'del': { const e = S.entries.find((x) => x.id === k); if (!e) break; const copy = { ...e }; await window.db.deleteEntry(k); toast('Удалено', () => window.db.restoreEntry(copy)); break; }
+    case 'undo': if (undoFn) { undoFn(); undoFn = null; $('#toast').classList.remove('show'); } break;
+    case 'star': { const e = S.entries.find((x) => x.id === k); if (e) window.db.updateEntry(k, { today: e.today === dayKey() ? null : dayKey() }); break; }
+    case 'rename': { const h = $('#pname'); h.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); break; }
+    case 'delproject': { const p = proj(ui.project); const n = S.entries.filter((x) => x.projectId === ui.project).length; if (p && confirm(`Удалить «${p.name}» и все записи (${n})? Отменить будет нельзя, но копия данных останется в ~/Daybook/backups.`)) await window.db.deleteProject(ui.project); break; }
     case 'open': window.db.openUrl(k); break;
     case 'hours': ui.editHours = k; render(); setTimeout(() => { const i = $('#hoursIn'); if (i) { i.focus(); i.select(); } }, 0); break;
     case 'cur': ui.cur = k; render(); break;
@@ -326,6 +358,15 @@ document.addEventListener('change', (ev) => {
 });
 
 document.addEventListener('dblclick', (ev) => {
+  const ed = ev.target.closest('[data-edit]');
+  if (ed) {
+    const e = S.entries.find((x) => x.id === ed.dataset.edit); if (!e) return;
+    ed.textContent = e.text; ed.contentEditable = 'true'; ed.focus(); document.getSelection().selectAllChildren(ed); document.getSelection().collapseToEnd();
+    const finish = (save) => { ed.onblur = null; ed.contentEditable = 'false'; const v = ed.textContent.trim(); if (save && v && v !== e.text) window.db.updateEntry(e.id, { text: v, title: e.type === 'link' && v !== e.text ? '' : e.title }); render(true); };
+    ed.onkeydown = (k) => { if (k.key === 'Enter') { k.preventDefault(); finish(true); } if (k.key === 'Escape') finish(false); };
+    ed.onblur = () => finish(true);
+    return;
+  }
   if (ev.target.id !== 'pname') return;
   const h = ev.target; h.contentEditable = 'true'; h.focus(); document.getSelection().selectAllChildren(h);
   h.onblur = () => { h.contentEditable = 'false'; const v = h.textContent.trim(); if (v) window.db.updateProject(ui.project, { name: v }); };
@@ -333,5 +374,6 @@ document.addEventListener('dblclick', (ev) => {
 
 window.db.onState((s) => { S = s; render(); });
 window.db.onGo((v) => { ui.view = v; render(); });
+window.db.onSearch((q) => { ui.view = 'base'; ui.q = q || ''; render(true); const i = $('#q'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } });
 window.db.getState().then((s) => { S = s; ui.target = s.lastProjectId; render(); });
 setInterval(render, 30000);

@@ -68,6 +68,47 @@ function load() {
   data.hours = data.hours || {};
   data.entries = data.entries || [];
   persist();
+  backup();
+}
+
+function backup() {
+  try {
+    const dir = path.join(DATA_DIR, 'backups'); fs.mkdirSync(dir, { recursive: true });
+    const f = path.join(dir, `daybook-${dayKey()}.json`);
+    if (!fs.existsSync(f)) fs.copyFileSync(DATA_FILE, f);
+    const all = fs.readdirSync(dir).filter((x) => /^daybook-\d{4}-\d{2}-\d{2}\.json$/.test(x)).sort();
+    all.slice(0, Math.max(0, all.length - 7)).forEach((x) => fs.unlinkSync(path.join(dir, x)));
+  } catch (e) { console.error('backup', e); }
+}
+
+// Входящие: сюда Claude (или задача по расписанию) кладёт JSON-файлы, приложение их забирает.
+// Формат: { "hours": { "2026-11-16": { "yt": 3, "sheet": 1 } }, "entries": [ { "project": "Академия", "type": "task", "text": "…" } ], "status": { "Академия": "…" } }
+function processInbox() {
+  const dir = path.join(DATA_DIR, 'inbox');
+  try { fs.mkdirSync(path.join(dir, 'processed'), { recursive: true }); } catch {}
+  let files = [];
+  try { files = fs.readdirSync(dir).filter((f) => f.endsWith('.json')); } catch { return; }
+  if (!files.length) return;
+  mutate(() => {
+    for (const f of files) {
+      const full = path.join(dir, f);
+      try {
+        const j = JSON.parse(fs.readFileSync(full, 'utf8'));
+        for (const [k, h] of Object.entries(j.hours || {})) {
+          const cur = data.hours[k] || {};
+          for (const src of ['yt', 'sheet', 'manual']) if (typeof h[src] === 'number') cur[src] = Math.max(0, h[src]);
+          cur.syncedAt = Date.now(); data.hours[k] = cur;
+        }
+        const byName = (n) => data.projects.find((p) => p.id === n || p.name.toLowerCase() === String(n || '').toLowerCase());
+        for (const e of j.entries || []) {
+          const p = byName(e.project) || data.projects[0]; if (!p || !e.text) continue;
+          data.entries.push({ id: uid(), projectId: p.id, type: e.type || 'task', text: String(e.text), done: false, created: Date.now(), from: 'claude' });
+        }
+        for (const [n, st] of Object.entries(j.status || {})) { const p = byName(n); if (p) { p.status = String(st); p.statusUpdated = Date.now(); } }
+        fs.renameSync(full, path.join(dir, 'processed', `${Date.now()}-${f}`));
+      } catch (e) { console.error('inbox', f, e); }
+    }
+  });
 }
 
 function persist() {
@@ -164,7 +205,7 @@ async function refreshCalendar() {
 
 // ---------------- reminders ----------------
 const notified = new Set();
-const fmtH = (h) => String(Math.round(h * 10) / 10).replace('.', ',') + ' ч';
+const fmtH = (h) => String(Math.round(h * 10) / 10).replace('.', ',') + '\u00A0ч';
 function hoursOn(key) { const h = data.hours[key] || {}; return (h.yt || 0) + (h.sheet || 0) + (h.manual || 0); }
 
 function checkReminder() {
@@ -177,7 +218,12 @@ function checkReminder() {
     if (mins < slot || mins > slot + 5 || notified.has(id)) continue;
     notified.add(id);
     const h = hoursOn(dayKey(now)), norm = data.settings.dayNorm;
-    if (h >= norm) continue;
+    if (h >= norm) {
+      if (slot !== rh * 60 + rm) continue;
+      const closed = data.entries.filter((e) => e.done && e.doneAt && dayKey(new Date(e.doneAt)) === dayKey(now)).length;
+      new Notification({ title: 'Daybook · итог дня', body: `Сегодня: ${fmtH(h)} · $${Math.round(h * data.settings.limeRate)} · закрыто задач: ${closed}. Можно отдыхать.` }).show();
+      continue;
+    }
     const n = new Notification({ title: 'Daybook · часы Лайма', body: h ? `Внесено ${fmtH(h)} из ${norm}. Допиши часы в YouTrack или таблицу.` : 'Сегодня часов пока нет. Внеси до конца дня.' });
     n.on('click', () => { createMain(); setTimeout(() => mainWin && mainWin.webContents.send('go', 'income'), 400); });
     n.show();
@@ -238,6 +284,8 @@ function hideCapture(returnFocus = true) {
   if (returnFocus && process.platform === 'darwin' && !(mainWin && mainWin.isVisible())) app.hide();
 }
 
+function msgBox(opts) { return mainWin && !mainWin.isDestroyed() ? dialog.showMessageBox(mainWin, opts) : dialog.showMessageBox(opts); }
+
 // ---------------- updates ----------------
 let update = null, updateState = '';
 const newer = (a, b) => { const pa = a.split('.').map(Number), pb = b.split('.').map(Number); for (let i = 0; i < 3; i++) if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0); return false; };
@@ -255,11 +303,11 @@ async function checkForUpdates(manual = false) {
       if (manual) installUpdate();
     } else {
       update = null; updateState = 'latest';
-      if (manual) dialog.showMessageBox({ message: 'У тебя последняя версия', detail: 'Daybook ' + app.getVersion() });
+      if (manual) msgBox({ message: 'У тебя последняя версия', detail: 'Daybook ' + app.getVersion() });
     }
   } catch (err) {
     updateState = 'error';
-    if (manual) dialog.showMessageBox({ type: 'warning', message: 'Не получилось проверить обновления', detail: String(err.message || err) });
+    if (manual) msgBox({ type: 'warning', message: 'Не получилось проверить обновления', detail: String(err.message || err) });
   }
   broadcast();
 }
@@ -268,7 +316,7 @@ async function installUpdate() {
   if (!update) return;
   const appPath = path.resolve(process.execPath, '../../..');
   if (!appPath.endsWith('.app')) { shell.openExternal(`https://github.com/${REPO}/releases/latest`); return; }
-  const { response } = await dialog.showMessageBox({
+  const { response } = await msgBox({
     message: `Обновить Daybook до ${update.version}?`,
     detail: (update.notes ? update.notes.slice(0, 600) + '\n\n' : '') + 'Приложение перезапустится. Записи сохранятся.',
     buttons: ['Обновить', 'Позже'], defaultId: 0, cancelId: 1,
@@ -295,7 +343,7 @@ async function installUpdate() {
     app.quit();
   } catch (err) {
     updateState = 'error'; updateTrayMenu();
-    dialog.showMessageBox({ type: 'warning', message: 'Обновление не установилось', detail: String(err.message || err) });
+    msgBox({ type: 'warning', message: 'Обновление не установилось', detail: String(err.message || err) });
   }
 }
 
@@ -360,6 +408,7 @@ ipcMain.handle('update-entry', (_e, { id, patch }) => mutate(() => {
   const en = data.entries.find((x) => x.id === id); if (!en) return;
   Object.assign(en, patch); if ('done' in patch) en.doneAt = patch.done ? Date.now() : null;
 }));
+ipcMain.handle('restore-entry', (_e, entry) => mutate(() => { if (entry && entry.id && !data.entries.some((x) => x.id === entry.id)) data.entries.push(entry); }));
 ipcMain.handle('delete-entry', (_e, id) => mutate(() => { data.entries = data.entries.filter((x) => x.id !== id); }));
 ipcMain.handle('update-project', (_e, { id, patch }) => mutate(() => {
   const p = data.projects.find((x) => x.id === id); if (!p) return;
@@ -387,6 +436,7 @@ ipcMain.handle('check-updates', () => checkForUpdates(true));
 ipcMain.handle('install-update', () => installUpdate());
 ipcMain.handle('refresh-calendar', () => refreshCalendar());
 ipcMain.on('capture-close', () => hideCapture(true));
+ipcMain.on('open-search', (_e, q) => { hideCapture(false); createMain(); setTimeout(() => mainWin && mainWin.webContents.send('search', q), 400); });
 ipcMain.on('capture-resize', (_e, h) => { if (captureWin) captureWin.setSize(640, Math.round(h)); });
 
 // ---------------- lifecycle ----------------
@@ -403,6 +453,8 @@ app.whenReady().then(() => {
   createMain();
   refreshRates(); setInterval(refreshRates, 6 * 3600e3);
   refreshCalendar(); setInterval(refreshCalendar, 10 * 60e3);
+  processInbox(); setInterval(processInbox, 20e3);
+  setInterval(backup, 3600e3);
   setInterval(checkReminder, 60e3);
   setInterval(broadcast, 60e3);
   setTimeout(() => checkForUpdates(false), 5000); setInterval(() => checkForUpdates(false), 6 * 3600e3);
