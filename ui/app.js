@@ -60,16 +60,22 @@ function monthStats(y = new Date().getFullYear(), m = new Date().getMonth()) {
   return { days, hours, earned, worked, avgH, forecast, deficit, wd };
 }
 function piggy() {
-  const now = new Date(), y = now.getFullYear(), m = now.getMonth(), wd = workdaysIn(y, m);
-  const perDay = S.settings.urfuMonthRub / wd;
-  let total = 0, today = 0;
-  for (let d = 1; d <= now.getDate(); d++) {
-    const dt = new Date(y, m, d); if (isWeekend(dt)) continue;
-    if (d < now.getDate()) { total += perDay; continue; }
-    const from = S.settings.urfuFrom, to = S.settings.urfuTo, h = now.getHours() + now.getMinutes() / 60;
-    today = perDay * Math.min(1, Math.max(0, (h - from) / (to - from))); total += today;
+  const now = new Date();
+  const [sy, sm, sd] = (S.settings.urfuStart || '2026-10-08').split('-').map(Number);
+  const start = new Date(sy, sm - 1, sd);
+  let total = 0, month = 0, today = 0;
+  for (let d = new Date(start); d <= now; d.setDate(d.getDate() + 1)) {
+    if (isWeekend(d)) continue;
+    const perDay = S.settings.urfuMonthRub / workdaysIn(d.getFullYear(), d.getMonth());
+    let v = perDay;
+    if (dayKey(d) === dayKey(now)) {
+      const h = now.getHours() + now.getMinutes() / 60, from = S.settings.urfuFrom, to = S.settings.urfuTo;
+      v = perDay * Math.min(1, Math.max(0, (h - from) / (to - from))); today = v;
+    }
+    total += v;
+    if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) month += v;
   }
-  return { total, today };
+  return { total, month, today, start };
 }
 
 // ---------- render ----------
@@ -260,6 +266,7 @@ function viewSettings() {
       <div class="row"><div class="field"><label>Чьи часы считаем — проект Лайма</label><select data-set="limeProject" title="Часы и деньги на главной относятся к этому проекту">${S.projects.map((p) => `<option value="${p.id}" ${p.id === s.limeProject ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>
         <div class="field"><label>Напоминание о часах</label><input data-set="reminderTime" type="time" value="${s.reminderTime}"></div></div>
       <div class="row"><div class="field"><label>Копилка УрФУ, ₽ в месяц</label><input data-set="urfuMonthRub" type="number" value="${s.urfuMonthRub}"></div>
+        <div class="field"><label>Работаю над УрФУ с</label><input data-set="urfuStart" type="date" value="${s.urfuStart || '2026-10-08'}"></div>
         <div class="field"><label>Валюта по умолчанию</label><select data-set="currency">${['usd', 'rub', 'gel'].map((c) => `<option value="${c}" ${s.currency === c ? 'selected' : ''}>${SYM[c]}</option>`).join('')}</select></div></div>
       <div class="field"><label>Календарь — секретный адрес в формате iCal</label>
         <input id="ics" placeholder="${s.hasCalendar ? 'Подключён. Вставь новый адрес, чтобы заменить' : 'https://calendar.google.com/calendar/ical/…/basic.ics'}">

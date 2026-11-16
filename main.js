@@ -27,7 +27,7 @@ const dayKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1
 function defaultSettings() {
   return {
     limeProject: null, limeRate: 20, dayNorm: 8,
-    urfuMonthRub: 150000, urfuFrom: 9, urfuTo: 18,
+    urfuMonthRub: 150000, urfuFrom: 9, urfuTo: 18, urfuStart: '2026-10-08',
     reminderTime: '20:00', currency: 'usd',
     rates: { rub: 80, gel: 2.7, updated: null },
     icsEnc: null,
