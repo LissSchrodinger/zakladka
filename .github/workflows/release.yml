@@ -32,20 +32,20 @@ jobs:
         if: steps.v.outputs.exists == 'false'
         run: |
           npm ci
-          npx @electron/packager . Zakladka --platform=darwin --arch=arm64 \
-            --icon=build/icon.icns --app-bundle-id=com.vasilisa.zakladka \
+          npx @electron/packager . Daybook --platform=darwin --arch=arm64 \
+            --icon=build/icon.icns --app-bundle-id=com.vasilisa.daybook \
             --app-category-type=public.app-category.productivity \
             --ignore='^/build' --ignore='^/test' --ignore='^/out' --ignore='^/\.github' \
             --out=out --overwrite
-          codesign --force --deep --sign - out/Zakladka-darwin-arm64/Zakladka.app
-          codesign --verify --deep out/Zakladka-darwin-arm64/Zakladka.app
-          ditto -c -k --keepParent out/Zakladka-darwin-arm64/Zakladka.app Zakladka-arm64.zip
+          codesign --force --deep --sign - out/Daybook-darwin-arm64/Daybook.app
+          codesign --verify --deep out/Daybook-darwin-arm64/Daybook.app
+          ditto -c -k --keepParent out/Daybook-darwin-arm64/Daybook.app Daybook-arm64.zip
 
       - name: Publish release
         if: steps.v.outputs.exists == 'false'
         run: |
           NOTES=$(git log -1 --pretty=%B)
-          gh release create "v${{ steps.v.outputs.version }}" Zakladka-arm64.zip \
-            --title "Закладка ${{ steps.v.outputs.version }}" --notes "$NOTES"
+          gh release create "v${{ steps.v.outputs.version }}" Daybook-arm64.zip \
+            --title "Daybook ${{ steps.v.outputs.version }}" --notes "$NOTES"
         env:
           GH_TOKEN: ${{ github.token }}

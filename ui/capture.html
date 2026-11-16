@@ -2,117 +2,71 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<link rel="stylesheet" href="base.css">
+<link rel="stylesheet" href="fonts.css">
 <style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { background: transparent; overflow: hidden; }
-  .box {
-    margin: 0; background: var(--bg); border-radius: 14px;
-    border: 1px solid var(--line); padding: 14px 16px 12px;
-    -webkit-app-region: drag;
-  }
-  .row { display: flex; align-items: center; gap: 6px; -webkit-app-region: no-drag; }
-  textarea {
-    width: 100%; border: 0; outline: 0; background: transparent; resize: none;
-    font-size: 20px; line-height: 1.35; padding: 2px 0 10px; min-height: 38px; max-height: 180px;
-    -webkit-app-region: no-drag; user-select: text;
-  }
-  textarea::placeholder { color: var(--faint); }
-  .chips { display: flex; gap: 4px; flex-wrap: wrap; }
-  .chip {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 4px 9px; border-radius: 7px; color: var(--muted); font-size: 12px;
-  }
-  .chip:hover { background: var(--hover); }
-  .chip.on { background: var(--active); color: var(--text); font-weight: 500; }
-  #types .chip.on { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
-  .sep { width: 1px; height: 16px; background: var(--line); margin: 0 6px; }
-  .hint { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line); color: var(--faint); font-size: 11px; display: flex; gap: 14px; }
-  .hint b { font-weight: 500; color: var(--muted); }
-  .saved { position: absolute; right: 18px; top: 18px; color: #22B07D; font-size: 12px; opacity: 0; transition: opacity .15s; }
+  body { color: #E1E8FF; font: 15px/1.45 'Inter Tight', -apple-system, sans-serif; -webkit-font-smoothing: antialiased; cursor: default; user-select: none; }
+  button { font: inherit; color: inherit; background: none; border: 0; }
+  .box { border-radius: 20px; padding: 16px 18px 12px; background: rgba(12,14,24,.82); box-shadow: inset 0 1px 0 rgba(255,255,255,.14), inset 0 0 0 1px rgba(255,255,255,.06); -webkit-app-region: drag; }
+  .row { display: flex; align-items: flex-start; gap: 12px; -webkit-app-region: no-drag; }
+  textarea { flex: 1; border: 0; outline: 0; background: transparent; color: #fff; resize: none; font: inherit; font-size: 20px; font-weight: 300; line-height: 1.35; min-height: 30px; max-height: 180px; padding: 2px; user-select: text; }
+  textarea::placeholder { color: rgba(225,232,255,.4); }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; padding-top: 10px; margin-top: 10px; border-top: 1px solid rgba(255,255,255,.08); -webkit-app-region: no-drag; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 10px; border-radius: 9px; color: rgba(225,232,255,.55); font-size: 13px; }
+  .chip.on { background: rgba(255,255,255,.14); color: #fff; }
+  .d { width: 6px; height: 6px; border-radius: 50%; }
+  .sep { width: 1px; height: 18px; align-self: center; background: rgba(255,255,255,.12); margin: 0 4px; }
+  .hint { display: flex; gap: 14px; padding-top: 8px; font-size: 11px; color: rgba(225,232,255,.35); }
+  .hint b { font-weight: 500; color: rgba(225,232,255,.6); }
 </style>
 </head>
 <body>
 <div class="box" id="box">
-  <textarea id="input" rows="1" autofocus></textarea>
-  <div class="row"><div class="chips" id="projects"></div></div>
-  <div class="row" style="margin-top:4px"><div class="chips" id="types"></div></div>
-  <div class="hint">
-    <span><b>Tab</b> проект</span>
-    <span><b>⌘1–4</b> тип</span>
-    <span><b>Enter</b> сохранить</span>
-    <span><b>⇧Enter</b> новая строка</span>
-    <span><b>Esc</b> закрыть</span>
-  </div>
+  <div class="row"><textarea id="input" rows="1" autofocus></textarea></div>
+  <div class="chips" id="chips"></div>
+  <div class="hint"><span><b>Tab</b> проект</span><span><b>⌘1–6</b> тип</span><span><b>Enter</b> сохранить</span><span><b>⇧Enter</b> строка</span><span><b>Esc</b> закрыть</span></div>
 </div>
 <script>
-const TYPES = [
-  { id: 'task', label: 'Задача', ph: 'Что нужно сделать…' },
-  { id: 'idea', label: 'Идея', ph: 'Что пришло в голову…' },
-  { id: 'question', label: 'Вопрос', ph: 'Что спросить или выяснить…' },
-  { id: 'status', label: 'Где остановилась', ph: 'На чём остановилась и что дальше…' },
-];
-let data, projectId, type;
-const $ = (id) => document.getElementById(id);
-const input = $('input');
-
+const TYPES = [['task', 'Задача', 'Что нужно сделать…'], ['question', 'Вопрос', 'Что спросить или выяснить…'], ['idea', 'Идея', 'Что пришло в голову…'], ['status', 'Где остановилась', 'На чём остановилась и что дальше…'], ['link', 'Ссылка', 'Вставь ссылку'], ['person', 'Человек', 'Имя, роль и @telegram']];
+let S, pid, type;
+const input = document.getElementById('input');
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 function render() {
-  $('projects').innerHTML = data.projects.map(p =>
-    `<button class="chip ${p.id === projectId ? 'on' : ''}" data-p="${p.id}"><span class="dot" style="background:${p.color}"></span>${esc(p.name)}</button>`).join('');
-  $('types').innerHTML = TYPES.map((t, i) =>
-    `<button class="chip ${t.id === type ? 'on' : ''}" data-t="${t.id}" title="⌘${i + 1}">${t.label}</button>`).join('');
-  input.placeholder = TYPES.find(t => t.id === type).ph;
+  document.getElementById('chips').innerHTML =
+    TYPES.map(([k, l], i) => `<button class="chip ${k === type ? 'on' : ''}" data-t="${k}" title="⌘${i + 1}">${l}</button>`).join('') + '<span class="sep"></span>' +
+    S.projects.map((p) => `<button class="chip ${p.id === pid ? 'on' : ''}" data-p="${p.id}"><span class="d" style="background:${p.color}"></span>${esc(p.name)}</button>`).join('');
+  input.placeholder = TYPES.find((t) => t[0] === type)[2];
   fit();
 }
-const esc = (s) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-
-function fit() {
-  input.style.height = 'auto';
-  input.style.height = Math.min(input.scrollHeight, 180) + 'px';
-  requestAnimationFrame(() => window.zk.resizeCapture($('box').offsetHeight + 2));
-}
-
+function fit() { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 180) + 'px'; requestAnimationFrame(() => window.db.resizeCapture(document.getElementById('box').offsetHeight + 2)); }
 function setType(t) {
   type = t;
-  if (t === 'status' && !input.value.trim()) {
-    const p = data.projects.find(p => p.id === projectId);
-    if (p && p.status) { input.value = p.status; input.select(); }
-  }
+  if (t === 'status' && !input.value.trim()) { const p = S.projects.find((x) => x.id === pid); if (p && p.status) { input.value = p.status; input.select(); } }
   render();
 }
-
-function open(d) {
-  data = d;
-  projectId = data.projects.some(p => p.id === data.lastProjectId) ? data.lastProjectId : (data.projects[0] || {}).id;
-  type = data.lastType === 'status' ? 'task' : (data.lastType || 'task');
-  input.value = '';
-  render();
+function open(s) {
+  S = s; pid = S.projects.some((p) => p.id === S.lastProjectId) ? S.lastProjectId : (S.projects[0] || {}).id;
+  type = ['status', 'link', 'person'].includes(S.lastType) ? 'task' : (S.lastType || 'task');
+  input.value = ''; render(); input.focus();
+}
+document.getElementById('chips').onclick = (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.t) setType(b.dataset.t); if (b.dataset.p) { pid = b.dataset.p; render(); }
   input.focus();
-}
-
-$('projects').onclick = (e) => { const b = e.target.closest('[data-p]'); if (b) { projectId = b.dataset.p; render(); input.focus(); } };
-$('types').onclick = (e) => { const b = e.target.closest('[data-t]'); if (b) { setType(b.dataset.t); input.focus(); } };
+};
 input.addEventListener('input', fit);
-
 document.addEventListener('keydown', async (e) => {
-  if (e.key === 'Escape') { window.zk.closeCapture(); return; }
-  if (e.key === 'Tab') {
-    e.preventDefault();
-    const i = data.projects.findIndex(p => p.id === projectId);
-    const n = data.projects.length;
-    projectId = data.projects[(i + (e.shiftKey ? -1 : 1) + n) % n].id;
-    render(); return;
-  }
-  if (e.metaKey && /^[1-4]$/.test(e.key)) { e.preventDefault(); setType(TYPES[+e.key - 1].id); return; }
+  if (e.key === 'Escape') return window.db.closeCapture();
+  if (e.key === 'Tab') { e.preventDefault(); const i = S.projects.findIndex((p) => p.id === pid), n = S.projects.length; pid = S.projects[(i + (e.shiftKey ? -1 : 1) + n) % n].id; render(); return; }
+  if (e.metaKey && /^[1-6]$/.test(e.key)) { e.preventDefault(); setType(TYPES[+e.key - 1][0]); return; }
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
-    e.preventDefault();
-    if (!input.value.trim()) return;
-    await window.zk.addEntry({ projectId, type, text: input.value });
-    window.zk.closeCapture();
+    e.preventDefault(); if (!input.value.trim()) return;
+    await window.db.addEntry({ projectId: pid, type, text: input.value }); window.db.closeCapture();
   }
 });
-
-window.zk.onCaptureOpen(open);
-window.zk.getData().then(open);
+window.db.onCaptureOpen(open);
+window.db.getState().then(open);
 </script>
 </body>
 </html>

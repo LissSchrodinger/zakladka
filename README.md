@@ -1,25 +1,25 @@
-# Закладка
+# Daybook
 
-Приложение для меню-бара macOS: быстрые записи по проектам.
+Приложение для меню-бара macOS: день, проекты и деньги в одном окне.
 
-- **⌘⇧Space** — быстрая запись из любого приложения (Tab — проект, ⌘1–4 — тип, Enter — сохранить)
-- «Где я остановилась» — статус каждого проекта
-- Задачи, идеи, вопросы
-- «Скопировать для Claude» — контекст проекта одной кнопкой
+- **Сегодня** — заработок на Лайме, часы до нормы, быстрая запись, что дальше, встречи из календаря, факт дня
+- **Проекты** — папки: «где я остановилась», задачи, вопросы, идеи, ссылки, люди (Telegram в один клик)
+- **Доходы** — по дням и месяцам, средние, недобор, копилка УрФУ, три валюты
+- **⌘⇧Space** — быстрая запись из любого приложения
+- Напоминание в 20:00, если часов меньше нормы
 
-Записи хранятся только локально: `~/Library/Application Support/Zakladka/zakladka.json`.
+Данные лежат в `~/Daybook/daybook.json` — их может читать и менять Claude.
 
 ## Установка
 
 ```sh
-curl -sL https://github.com/LissSchrodinger/zakladka/releases/latest/download/Zakladka-arm64.zip -o /tmp/zakladka.zip \
-  && (pkill -x Zakladka; sleep 1; true) && rm -rf /Applications/Zakladka.app \
-  && ditto -x -k /tmp/zakladka.zip /Applications && xattr -cr /Applications/Zakladka.app \
-  && open /Applications/Zakladka.app
+curl -sL https://github.com/LissSchrodinger/zakladka/releases/latest/download/Daybook-arm64.zip -o /tmp/daybook.zip \
+  && (pkill -x Zakladka; pkill -x Daybook; sleep 1; true) && rm -rf /Applications/Zakladka.app /Applications/Daybook.app \
+  && ditto -x -k /tmp/daybook.zip /Applications && xattr -cr /Applications/Daybook.app && open /Applications/Daybook.app
 ```
 
-Дальше обновления — из меню приложения: «Обновить».
+Дальше обновления — кнопкой в приложении.
 
 ## Релиз
 
-Подними `version` в `package.json` и запушь в `main` — GitHub Actions соберёт приложение и опубликует релиз.
+Подними `version` в `package.json` и запушь в `main` — GitHub Actions соберёт и опубликует релиз.
