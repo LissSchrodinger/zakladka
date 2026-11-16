@@ -1,6 +1,6 @@
 {
   "name": "daybook",
-  "version": "2.1.3",
+  "version": "2.1.4",
   "description": "Daybook — день, проекты и деньги в меню-баре Mac",
   "main": "main.js",
   "keywords": [],

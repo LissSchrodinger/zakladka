@@ -159,3 +159,12 @@ a { color: inherit; text-decoration: none; }
 .star { width: 26px; color: var(--faint); font-size: 16px; }
 .star:hover, .star.on { color: var(--amber); }
 .toast button { font: inherit; }
+
+.fact-hero { gap: 14px; padding: 24px 0 8px; }
+.fact-hero .k { font-size: 12px; color: var(--faint); letter-spacing: .12em; text-transform: uppercase; }
+.fact-text { max-width: 620px; font-size: 34px; line-height: 1.25; font-weight: 300; letter-spacing: -0.015em; text-wrap: balance; color: #F1F4FF; }
+.fact-text::before { content: '«'; color: var(--cyan); margin-right: 2px; }
+.fact-text::after { content: '»'; color: var(--cyan); margin-left: 2px; }
+.fact-src { font-size: 12px; color: rgba(225,232,255,.35); }
+.fact-src button { color: var(--cyan); font-size: 12px; }
+.fact-src button:hover { text-decoration: underline; }

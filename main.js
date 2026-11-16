@@ -139,7 +139,7 @@ function publicState() {
   const day = Math.floor((Date.now() - new Date(2026, 0, 1)) / 864e5);
   return {
     ...data, settings: { ...settings, hasCalendar: !!icsEnc },
-    calendar, fact: FACTS[((day % FACTS.length) + FACTS.length) % FACTS.length],
+    calendar, fact: FACTS[((day % FACTS.length) + FACTS.length) % FACTS.length], facts: FACTS, factIndex: ((day % FACTS.length) + FACTS.length) % FACTS.length,
     version: app.getVersion(), update: update ? update.version : null, hotkey: '⌘⇧Space',
   };
 }

@@ -103,12 +103,14 @@ function composerHtml(id) {
 function viewToday() {
   const now = new Date(), key = dayKey(now), h = hoursOn(key), norm = S.settings.dayNorm, hr = S.hours[key] || {};
   const ms = monthStats(), pg = piggy();
-  const bars = Array.from({ length: norm }, (_, i) => `<span class="${i < Math.floor(h) ? 'on' : ''}"></span>`).join('');
+  const fact = S.facts ? S.facts[(S.factIndex + (ui.factShift || 0)) % S.facts.length] : S.fact;
   const src = [hr.yt ? `YouTrack ${fmtH(hr.yt)}` : '', hr.sheet ? `таблица ${fmtH(hr.sheet)}` : '', typeof hr.manual === 'number' ? `итог поправлен вручную: ${fmtH(hr.manual)}` : ''].filter(Boolean).join(' · ');
   const block = (title, rows) => rows.length ? `<div class="group-k">${title}</div>${rows.join('')}` : '';
 
   const urgent = [];
-  if (!isWeekend(now) && h < norm) {
+  const [rh, rm] = S.settings.reminderTime.split(':').map(Number);
+  const lateEnough = now.getHours() * 60 + now.getMinutes() >= rh * 60 + rm - 30;
+  if (!isWeekend(now) && h < norm && (lateEnough || ui.editHours === key)) {
     urgent.push(ui.editHours === key
       ? `<div class="item"><span class="mark" style="border-color:var(--amber)"></span><span class="t">Итог часов за сегодня (пусто — считать из YouTrack и таблицы)</span><input class="hours-input" id="hoursIn" type="number" step="0.5" min="0" value="${typeof hr.manual === 'number' ? hr.manual : ''}" placeholder="${(hr.yt || 0) + (hr.sheet || 0)}"><span class="meta">Enter</span></div>`
       : `<div class="item"><span class="mark" style="border-color:var(--amber)"></span><span class="t">${h ? `Внести часы — не хватает ${fmtH(norm - h)}` : 'Внести часы Лайма за сегодня'}</span><span class="meta">сверка в ${S.settings.reminderTime}</span><button class="act amber" data-act="hours" data-k="${key}">Внести</button></div>`);
@@ -135,11 +137,10 @@ function viewToday() {
   const calHint = !S.settings.hasCalendar ? `<div class="more"><a href="#" data-act="go" data-k="settings">Подключить календарь →</a></div>` : '';
 
   return `<div class="col center">
-    <section class="hero">
-      <span class="label">Сегодня заработано</span>
-      <span class="big">${money(h * S.settings.limeRate)}</span>
-      <div style="display:flex;align-items:center;gap:12px;font-size:14px;color:var(--dim)"><span class="hours-bar">${bars}</span>${fmtH(h)} из ${norm} на Лайме</div>
-      ${src ? `<span class="hint-link" style="cursor:default">${src}${hr.syncedAt ? ' · собрано ' + new Date(hr.syncedAt).toTimeString().slice(0, 5) : ''}</span>` : ''}
+    <section class="hero fact-hero">
+      <span class="k">факт дня · нейробиология</span>
+      <p class="fact-text">${esc(fact[0])}</p>
+      <span class="fact-src">${esc(fact[1])} · <button data-act="nextfact">ещё факт</button></span>
       <a href="#" class="hint-link" data-act="go" data-k="income">${MONTHS[now.getMonth()]} ${money(ms.earned)} · копилка ${rub(pg.total)} →</a>
     </section>
     ${composerHtml('draft')}
@@ -152,7 +153,6 @@ function viewToday() {
       ${!urgent.length && !qs.length && !openTasks.length ? '<div class="empty">Всё сделано. Можно выдохнуть.</div>' : ''}
       ${calHint}
     </section>
-    <section class="fact"><span class="k">факт дня</span><p>${esc(S.fact[0])}</p><small>${esc(S.fact[1])}</small></section>
   </div>`;
 }
 
@@ -309,6 +309,7 @@ document.addEventListener('click', async (ev) => {
     case 'open': window.db.openUrl(k); break;
     case 'hours': ui.editHours = k; render(); setTimeout(() => { const i = $('#hoursIn'); if (i) { i.focus(); i.select(); } }, 0); break;
     case 'cur': ui.cur = k; render(); break;
+    case 'nextfact': ui.factShift = (ui.factShift || 0) + 1; render(); break;
     case 'kind': ui.kind = k; render(); break;
     case 'tag': ui.tag = ui.tag === k ? null : k; render(); break;
     case 'openproject': ui.project = k; ui.view = 'projects'; render(); break;
